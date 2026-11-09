@@ -27,10 +27,20 @@ def probe(url):
     """Сохраняет текст и ссылки страницы для разведки источника."""
     try:
         status, ctype, body = get(url)
+        raw = OUT / "raw"; raw.mkdir(exist_ok=True)
+        (raw / (re.sub(r"[^A-Za-z0-9]+", "_", url.split("//")[1])[:80] + ".html")).write_text(body)
         links = sorted(set(re.findall(r"""href=["']([^"']+)["']""", body)))
         links = [l for l in links if re.search(r"(?i)rate|risk|stock|secur|xls|csv|json|connector|fond|equit", l)]
-        diag["attempts"].append({"probe": url, "status": status, "type": ctype,
-                                 "text": text_of(body)[:3000], "links": links[:150]})
+        tables = re.findall(r"(?is)<table.*?</table>", body)
+        scripts = re.findall(r"""(?is)<script[^>]*src=["']([^"']+)""", body)
+        inline = " ".join(re.findall(r"(?is)<script(?![^>]*src)[^>]*>(.*?)</script>", body))
+        endpoints = sorted(set(re.findall(r"""["'](/[^"'\s]*(?:rates|risk|csv|xls|json|ajax|api|export|download)[^"'\s]*)["']""", body + inline)))
+        diag["attempts"].append({"probe": url, "status": status, "type": ctype, "size": len(body),
+                                 "links": links[:150], "scripts": scripts[:40], "endpoints": endpoints[:80],
+                                 "tables": [text_of(t)[:2500] for t in tables[:4]],
+                                 "inline_js": re.sub(r"\s+", " ", inline)[:4000],
+                                 "forms": re.findall(r"(?is)<form.*?</form>", body)[:3] and
+                                          [re.sub(r"\s+", " ", f)[:1500] for f in re.findall(r"(?is)<form.*?</form>", body)[:3]]})
     except Exception as e:  # noqa: BLE001
         diag["attempts"].append({"probe": url, "error": repr(e)[:300]})
 
@@ -84,10 +94,9 @@ for base in ("https://iss.moex.com/iss/rms/engines/stock/objects/irr",
         diag["attempts"].append({"source": base, "error": repr(e)[:500]})
 
 if not result:
-    for u in ("https://www.nationalclearingcentre.ru/catalog/030802",
-              "https://www.nationalclearingcentre.ru/rates/securInfo",
-              "https://www.nationalclearingcentre.ru/rates/stockMarketRates",
-              "https://www.nationalclearingcentre.ru/rates/fondMarketRates"):
+    for u in ("https://www.nationalclearingcentre.ru/rates/fondMarketRates",
+              "https://www.nationalclearingcentre.ru/rates/securIndRates",
+              "https://www.nationalclearingcentre.ru/rates/securInfo"):
         probe(u)
 
 if result:
