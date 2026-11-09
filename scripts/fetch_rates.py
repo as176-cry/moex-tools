@@ -52,19 +52,20 @@ def rows(block):
 def from_iss(base):
     out, cols, start, first_prev = [], None, 0, None
     while start < 30000:
-        url = f"{base}.json?iss.meta=off&start={start}"
+        url = f"{base}.json?iss.meta=off&iss.only=marketrates,marketrates.cursor&start={start}"
         status, ctype, body = get(url)
         if start == 0:
             diag["attempts"].append({"url": url, "status": status, "type": ctype, "text": text_of(body)[:1500]})
         j = json.loads(body)
-        key = next((k for k, v in j.items() if isinstance(v, dict) and "SECID" in v.get("columns", [])), None)
+        key = next((k for k, v in j.items() if isinstance(v, dict) and any(c.upper() in ("SECID", "ASSETID1") for c in v.get("columns", []))), None)
         if not key:
             break
         b = j[key]
         cols = b["columns"]
         if not b["data"]:
             break
-        first = b["data"][0][cols.index("SECID")]
+        idc = next(i for i, c in enumerate(cols) if c.upper() in ("SECID", "ASSETID1"))
+        first = (b["data"][0][idc], b["data"][-1][idc], len(b["data"]))
         if first == first_prev:
             break
         first_prev = first
@@ -73,7 +74,8 @@ def from_iss(base):
         cur = next((k for k in j if "cursor" in k.lower()), None)
         if cur and j[cur]["data"]:
             c = rows(j[cur])[0]
-            if c.get("TOTAL") is not None and start >= c["TOTAL"]:
+            tot = c.get("TOTAL", c.get("total"))
+            if tot is not None and start >= tot:
                 break
         elif len(b["data"]) < 100:
             break
@@ -82,8 +84,7 @@ def from_iss(base):
 
 
 result = None
-for base in ("https://iss.moex.com/iss/rms/engines/stock/objects/irr",
-             "https://iss.moex.com/iss/rms-test/engines/stock/objects/irr"):
+for base in ("https://iss.moex.com/iss/rms/engines/stock/objects/marketrates",):
     try:
         data, cols = from_iss(base)
         diag["attempts"].append({"source": base, "rows": len(data), "columns": cols})
@@ -93,16 +94,12 @@ for base in ("https://iss.moex.com/iss/rms/engines/stock/objects/irr",
     except Exception as e:  # noqa: BLE001
         diag["attempts"].append({"source": base, "error": repr(e)[:500]})
 
-if not result:
-    for u in ("https://www.nationalclearingcentre.ru/rates/fondMarketRates",
-              "https://www.nationalclearingcentre.ru/rates/securIndRates",
-              "https://www.nationalclearingcentre.ru/rates/securInfo"):
-        probe(u)
 
 if result:
     by = {}
     for r in result["rows"]:
-        by.setdefault(str(r.get("SECID", "")).upper(), []).append(r)
+        sid = str(r.get("SECID") or r.get("assetid1") or r.get("ASSETID1") or "").upper()
+        by.setdefault(sid, []).append(r)
     payload = {
         "updated": diag["run"],
         "source": result["source"],
