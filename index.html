@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Сколько лотов MOEX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow work column — input bar, result block, details table, history chips */
+:root{
+  --bg:#f3f5f4; --panel:#ffffff; --fg:#17201d; --muted:#5d6b66; --line:#d9e0dd;
+  --accent:#0b6e5a; --accent-fg:#ffffff; --good:#137a3a; --warn:#a15c00; --bad:#b3261e;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1513; --panel:#161e1b; --fg:#e4ebe8; --muted:#90a09a; --line:#26322e;
+  --accent:#3fbf9f; --accent-fg:#06120e; --good:#4cc477; --warn:#e0a24a; --bad:#ff7b72; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+main{max-width:720px;margin:0 auto;display:grid;gap:18px}
+h1{font-size:22px;font-weight:600;margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.field{display:grid;gap:4px;flex:1 1 150px;min-width:0}
+label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+input,select{font:500 16px var(--mono);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px 10px;width:100%;font-variant-numeric:tabular-nums}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#ticker{text-transform:uppercase;font-size:20px;font-weight:600}
+button{font:600 15px var(--sans);border:0;border-radius:7px;padding:10px 18px;cursor:pointer;background:var(--accent);color:var(--accent-fg)}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:500;padding:6px 10px;font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;color:var(--muted);border-radius:0;padding:8px 12px;font-weight:500;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.result{display:grid;gap:4px}
+.big{font:600 46px/1.1 var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.big small{font:500 16px var(--sans);color:var(--muted);letter-spacing:0;margin-left:6px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:13px}
+.pill{display:inline-block;font:600 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:99px;border:1px solid currentColor}
+.pill.stk{color:var(--accent)} .pill.fut{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:7px 0;border-top:1px solid var(--line);vertical-align:top}
+td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.msg{font-size:14px;padding:10px 12px;border-radius:7px;border:1px solid var(--line)}
+.msg.err{color:var(--bad);border-color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font-family:var(--mono)}
+.note{color:var(--muted);font-size:12.5px;max-width:65ch}
+.ok{color:var(--good)}
+@media (prefers-reduced-motion:no-preference){.big{transition:opacity .2s}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Сколько лотов MOEX</h1>
+    <p class="sub">Акции и фьючерсы Мосбиржи · цены из ISS (публичные данные идут с задержкой ~15 мин)</p>
+  </header>
+
+  <section class="panel" aria-label="Ввод">
+    <div class="row">
+      <div class="field" style="flex:2 1 180px">
+        <label for="ticker">Тикер</label>
+        <input id="ticker" value="SBER" autocomplete="off" spellcheck="false" placeholder="SBER, Si, SiZ6, IMOEXF">
+      </div>
+      <div class="field" style="flex:2 1 180px">
+        <label for="bp">Покупательская способность, ₽</label>
+        <input id="bp" inputmode="decimal" value="1 000 000">
+      </div>
+      <button id="go">Посчитать</button>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Тип</label>
+        <div class="seg" role="group" aria-label="Тип инструмента">
+          <button data-kind="auto" aria-pressed="true">Авто</button>
+          <button data-kind="stock" aria-pressed="false">Акция</button>
+          <button data-kind="fut" aria-pressed="false">Фьючерс</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="side">Цена для расчёта</label>
+        <select id="side">
+          <option value="last">Последняя сделка</option>
+          <option value="offer">Аск (покупка)</option>
+          <option value="bid">Бид (продажа)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="reserve">Резерв, %</label>
+        <input id="reserve" inputmode="decimal" value="0">
+      </div>
+      <div class="field">
+        <label for="goMult">ГО брокера, × биржевого</label>
+        <input id="goMult" inputmode="decimal" value="1">
+      </div>
+    </div>
+    <div class="chips" id="history" aria-label="Недавние тикеры"></div>
+  </section>
+
+  <section class="panel" id="out" aria-live="polite">
+    <p class="note">Введите тикер и нажмите «Посчитать».</p>
+  </section>
+
+  <p class="note">
+    Акции: лоты = ПС × (1 − резерв) ÷ (цена × размер лота). Фьючерсы: контракты = ПС × (1 − резерв) ÷ ГО;
+    ГО берётся биржевое (INITIALMARGIN), а если брокер ставит выше — укажите множитель, например 1.2.
+    Для фьючерса можно ввести код базового актива (Si, BR, SBRF, GOLD) — подставится ближайший контракт.
+  </p>
+</main>
+
+<script>
+(() => {
+  const ISS = "https://iss.moex.com/iss";
+  const $ = s => document.querySelector(s);
+  const store = {
+    get(k, d){ try{ const v = localStorage.getItem("mbp_"+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
+    set(k, v){ try{ localStorage.setItem("mbp_"+k, JSON.stringify(v)); }catch(e){} }
+  };
+  let kind = "auto";
+  let futList = null, futListAt = 0;
+
+  const num = s => { const n = parseFloat(String(s).replace(/\s/g,"").replace(",", ".")); return isFinite(n)?n:NaN; };
+  const fmt = (n, d=2) => isFinite(n) ? n.toLocaleString("ru-RU",{minimumFractionDigits:0,maximumFractionDigits:d}) : "—";
+  const rub = n => isFinite(n) ? fmt(n,2)+" ₽" : "—";
+
+  // ISS returns {block:{columns:[...],data:[[...]]}} → array of objects
+  const rows = b => b && b.data ? b.data.map(r => Object.fromEntries(b.columns.map((c,i)=>[c,r[i]]))) : [];
+  async function getJSON(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if(!r.ok) throw new Error("ISS ответил "+r.status);
+    return r.json();
+  }
+
+  // restore inputs
+  $("#bp").value = store.get("bp", $("#bp").value);
+  $("#reserve").value = store.get("reserve", "0");
+  $("#goMult").value = store.get("goMult", "1");
+  $("#side").value = store.get("side", "last");
+  $("#ticker").value = store.get("last", "SBER");
+  kind = store.get("kind", "auto");
+  setKind(kind);
+
+  function setKind(k){
+    kind = k;
+    document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.kind===k)));
+  }
+  document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>{setKind(b.dataset.kind); store.set("kind",kind);}));
+
+  function renderHistory(){
+    const h = store.get("hist", []);
+    const box = $("#history"); box.innerHTML = "";
+    h.forEach(t => { const b = document.createElement("button"); b.className="ghost"; b.textContent=t;
+      b.addEventListener("click",()=>{ $("#ticker").value=t; run(); }); box.appendChild(b); });
+  }
+  function pushHistory(t){
+    let h = store.get("hist", []).filter(x=>x!==t); h.unshift(t); store.set("hist", h.slice(0,10)); renderHistory();
+  }
+  renderHistory();
+
+  function pickPrice(md, side, fallback){
+    const last = md.LAST ?? md.MARKETPRICE ?? md.LCURRENTPRICE ?? md.LCLOSEPRICE;
+    let p, src;
+    if(side==="offer" && md.OFFER){ p=md.OFFER; src="аск"; }
+    else if(side==="bid" && md.BID){ p=md.BID; src="бид"; }
+    else if(last){ p=last; src = md.LAST ? "последняя" : "рыночная"; }
+    else { p=fallback; src="закрытие пред. дня"; }
+    return {p:+p, src};
+  }
+
+  async function loadStock(t){
+    const j = await getJSON(`${ISS}/engines/stock/markets/shares/securities/${encodeURIComponent(t)}.json?iss.meta=off&iss.only=securities,marketdata`);
+    const sec = rows(j.securities), md = rows(j.marketdata);
+    if(!sec.length) return null;
+    const pref = ["TQBR","TQTF","TQIF","TQPI","TQTD","SMAL"];
+    const s = pref.map(b=>sec.find(r=>r.BOARDID===b)).find(Boolean) || sec[0];
+    const m = md.find(r=>r.BOARDID===s.BOARDID) || {};
+    return {type:"stock", sec:s, md:m};
+  }
+
+  async function loadFutures(t){
+    const now = Date.now();
+    if(!futList || now - futListAt > 60000){
+      const j = await getJSON(`${ISS}/engines/futures/markets/forts/securities.json?iss.meta=off&iss.only=securities,marketdata`);
+      const sec = rows(j.securities), md = rows(j.marketdata);
+      const mdBy = Object.fromEntries(md.map(r=>[r.SECID, r]));
+      futList = sec.map(s=>({sec:s, md:mdBy[s.SECID]||{}}));
+      futListAt = now;
+    }
+    const T = t.toUpperCase();
+    let hit = futList.find(f=>f.sec.SECID.toUpperCase()===T);
+    if(!hit){
+      const today = new Date().toISOString().slice(0,10);
+      const series = futList.filter(f=>(f.sec.ASSETCODE||"").toUpperCase()===T && (f.sec.LASTTRADEDATE||"9999")>=today)
+        .sort((a,b)=>(a.sec.LASTTRADEDATE||"").localeCompare(b.sec.LASTTRADEDATE||""));
+      hit = series[0];
+      if(hit) hit.series = series.map(f=>f.sec.SECID);
+    }
+    return hit ? {type:"fut", ...hit} : null;
+  }
+
+  async function run(){
+    const t = $("#ticker").value.trim();
+    if(!t) return;
+    const bp = num($("#bp").value), reserve = num($("#reserve").value)||0, goMult = num($("#goMult").value)||1, side=$("#side").value;
+    store.set("bp",$("#bp").value); store.set("reserve",$("#reserve").value); store.set("goMult",$("#goMult").value); store.set("side",side); store.set("last",t);
+    const out = $("#out");
+    if(!(bp>0)){ out.innerHTML = `<div class="msg err">Укажите покупательскую способность больше нуля.</div>`; return; }
+    out.style.opacity = .5;
+    try{
+      let r = null;
+      if(kind!=="fut") r = await loadStock(t.toUpperCase());
+      if(!r && kind!=="stock") r = await loadFutures(t);
+      out.style.opacity = 1;
+      if(!r){ out.innerHTML = `<div class="msg err">Тикер «${esc(t)}» не найден ни среди акций, ни среди фьючерсов FORTS. Проверьте написание (например SBER, SiZ6, Si).</div>`; return; }
+      pushHistory(r.sec.SECID);
+      const budget = bp * (1 - reserve/100);
+      out.innerHTML = r.type==="stock" ? stockView(r, budget, bp, side) : futView(r, budget, bp, side, goMult);
+      out.querySelector("#refresh")?.addEventListener("click", run);
+    }catch(e){
+      out.style.opacity = 1;
+      out.innerHTML = `<div class="msg err">Не удалось получить данные с iss.moex.com: ${esc(e.message)}. Проверьте интернет; если страница открыта в песочнице с ограничением сети, откройте файл прямо в браузере.</div>`;
+    }
+  }
+
+  function stockView(r, budget, bp, side){
+    const s=r.sec, m=r.md, lot=+s.LOTSIZE||1;
+    const {p, src} = pickPrice(m, side, s.PREVPRICE);
+    const lotCost = p*lot;
+    const lots = Math.floor(budget/lotCost);
+    const used = lots*lotCost;
+    return `
+      <div class="result">
+        <div class="meta"><span class="pill stk">Акция</span><span>${esc(s.SECID)} · ${esc(s.SHORTNAME||"")}</span><span>${esc(s.BOARDID)}</span></div>
+        <div class="big">${fmt(lots,0)}<small>лот${plural(lots)} = ${fmt(lots*lot,0)} шт.</small></div>
+      </div>
+      <table>
+        <tr><td>Цена (${src})</td><td>${fmt(p,6)} ₽</td></tr>
+        <tr><td>Размер лота</td><td>${fmt(lot,0)} шт.</td></tr>
+        <tr><td>Стоимость 1 лота</td><td>${rub(lotCost)}</td></tr>
+        <tr><td>Будет задействовано</td><td>${rub(used)}</td></tr>
+        <tr><td>Остаток от ПС</td><td>${rub(bp-used)}</td></tr>
+        <tr><td>Бид / аск</td><td>${fmt(m.BID,6)} / ${fmt(m.OFFER,6)}</td></tr>
+      </table>
+      <div class="row" style="justify-content:space-between"><span class="note">Обновлено ${new Date().toLocaleTimeString("ru-RU")} · время биржи ${esc(m.TIME||m.UPDATETIME||"—")}</span><button class="ghost" id="refresh">Обновить</button></div>`;
+  }
+
+  function futView(r, budget, bp, side, goMult){
+    const s=r.sec, m=r.md;
+    const {p, src} = pickPrice(m, side, s.PREVSETTLEPRICE);
+    const go = (+s.INITIALMARGIN)*goMult;
+    const n = go>0 ? Math.floor(budget/go) : NaN;
+    const stepPrice=+s.STEPPRICE, minStep=+s.MINSTEP;
+    const notional = (minStep>0 && stepPrice>0) ? p/minStep*stepPrice : NaN;
+    const lev = n>0 ? n*notional/bp : NaN;
+    const series = r.series && r.series.length>1 ? `<tr><td>Другие серии</td><td>${r.series.slice(1,5).map(esc).join(", ")}</td></tr>` : "";
+    return `
+      <div class="result">
+        <div class="meta"><span class="pill fut">Фьючерс</span><span>${esc(s.SECID)} · ${esc(s.SHORTNAME||"")}</span><span>эксп. ${esc(s.LASTTRADEDATE||"—")}</span></div>
+        <div class="big">${fmt(n,0)}<small>контракт${plural(n,["","а","ов"])}</small></div>
+      </div>
+      <table>
+        <tr><td>Цена (${src})</td><td>${fmt(p,6)} пт.</td></tr>
+        <tr><td>ГО на 1 контракт${goMult!==1?` (×${fmt(goMult,3)})`:""}</td><td>${rub(go)}</td></tr>
+        <tr><td>Будет заблокировано ГО</td><td>${rub(n*go)}</td></tr>
+        <tr><td>Остаток от ПС</td><td>${rub(bp-n*go)}</td></tr>
+        <tr><td>Стоимость 1 контракта</td><td>${rub(notional)}</td></tr>
+        <tr><td>Объём позиции / плечо к ПС</td><td>${rub(n*notional)} · ${isFinite(lev)?fmt(lev,2)+"×":"—"}</td></tr>
+        <tr><td>Шаг цены / стоимость шага</td><td>${fmt(minStep,6)} / ${fmt(stepPrice,5)} ₽</td></tr>
+        <tr><td>Биржевой сбор за контракт</td><td>${rub(+s.BUYSELLFEE)}</td></tr>
+        ${series}
+      </table>
+      <div class="row" style="justify-content:space-between"><span class="note">Обновлено ${new Date().toLocaleTimeString("ru-RU")} · время биржи ${esc(m.TIME||m.UPDATETIME||"—")}</span><button class="ghost" id="refresh">Обновить</button></div>`;
+  }
+
+  function plural(n, f=["","а","ов"]){ n=Math.abs(n)%100; const n1=n%10;
+    if(n>10&&n<20) return f[2]; if(n1>1&&n1<5) return f[1]; if(n1===1) return f[0]; return f[2]; }
+  function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+  $("#go").addEventListener("click", run);
+  ["#ticker","#bp","#reserve","#goMult"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter") run(); }));
+  $("#side").addEventListener("change", run);
+  run();
+})();
+</script>
+</body>
+</html>
