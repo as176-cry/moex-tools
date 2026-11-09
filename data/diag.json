@@ -1,0 +1,20 @@
+{
+ "run": "2026-11-09T17:27:08.719757Z",
+ "attempts": [
+  {
+   "url": "https://iss.moex.com/iss/rms/engines/stock/objects/irr.json?iss.meta=off&start=0",
+   "status": 200,
+   "type": "text/html",
+   "head": "<!DOCTYPE html>\n\n<html lang=\"en\" xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n    <meta charset=\"utf-8\" />\n    <title></title>\n    <style type=\"text/css\">\n        body {\n        color: #636565;\n        font-family: Arial, Helvetica, sans-serif;\n        font-size: 12px;\n        line-height:1.4;\n        }\n\n        #container {\n        margin:0 auto;\n        }\n\n        span, a {\n        color: #636565;\n        font-weight: normal;\n        }\n\n        #container {\n        margin-left: auto;\n        margin-right: auto;\n        max-width:470px;\n        min-width:300px;\n        }\n\n        #logo {\n        padding-top:20px;\n        }\n\n        .content-rus {\n        padding-top:23px;\n        }\n\n        .content-en {\n        padding-top:13px;\n        }\n\n    </style>\n</head>\n<body>\n<div id=\"container\">\n<div id=\"logo\"><img alt=\"\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARcAAABGCAYAAADmdtAyAAAKQ2lDQ1BJQ0MgcHJvZmlsZQAAeNqdU3dYk/cWPt/3ZQ9WQtjwsZdsgQAiI6wIyBBZohCSAGGEEBJAxYWIClYUFRGcSFXEgtUKSJ2I4qAouGdBiohai1VcOO4f3Ke1fXrv7e371/u855zn/M55zw+AERImkeaiagA5UoU8Otgfj09IxMm9gAIVSOAEIBDmy8JnBcUAAPADeXh+dLA//AGvbwACAHDVLiQSx+H/g7pQJlcAIJEA4CIS5wsBkFIAyC5UyBQAyBgAsFOzZAoAlAAAbHl8QiIAqg0A7PRJPgUA2KmT3BcA2KIcqQgAjQEAmShHJAJAuwBgVYFSLALAwgCgrEAiLgTArgGAWbYyRwKAvQUAdo5YkA9AYACAmUIszAAgOAIAQx4TzQMgTAOgMNK/4KlfcIW4SAEAwMuVzZdL0jMUuJXQGnfy8ODiIeLCbLFCYRcpEGYJ5CKcl5sjE0jnA0zODAAAGvnRwf44P5Dn5uTh5mbnbO/0xaL+a/BvIj4h8d/+vIwCBAAQTs/v2l/l5dYDcMcBsHW/a6lbANpWAGjf+V0z2wmgWgrQevmLeTj8QB6eoVDIPB0cCgsL7SVio"
+  },
+  {
+   "source": "https://iss.moex.com/iss/rms/engines/stock/objects/irr",
+   "error": "JSONDecodeError('Expecting value: line 1 column 1 (char 0)')"
+  },
+  {
+   "source": "https://iss.moex.com/iss/rms-test/engines/stock/objects/irr",
+   "error": "<HTTPError 404: 'Not Found'>"
+  }
+ ],
+ "ok": false
+}
