@@ -3,7 +3,7 @@
 Источники по порядку: ISS MOEX (rms, затем rms-test). Для диагностики
 сохраняет начало сырых ответов в data/diag.json.
 """
-import json, time, urllib.request, datetime, pathlib
+import json, re, time, urllib.request, datetime, pathlib
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "data"
 OUT.mkdir(exist_ok=True)
@@ -17,6 +17,24 @@ def get(url):
         return r.status, r.headers.get("Content-Type", ""), r.read().decode("utf-8", "replace")
 
 
+def text_of(html):
+    html = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+    html = re.sub(r"data:[^\"')\s]+", " ", html)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
+def probe(url):
+    """Сохраняет текст и ссылки страницы для разведки источника."""
+    try:
+        status, ctype, body = get(url)
+        links = sorted(set(re.findall(r"""href=["']([^"']+)["']""", body)))
+        links = [l for l in links if re.search(r"(?i)rate|risk|stock|secur|xls|csv|json|connector|fond|equit", l)]
+        diag["attempts"].append({"probe": url, "status": status, "type": ctype,
+                                 "text": text_of(body)[:3000], "links": links[:150]})
+    except Exception as e:  # noqa: BLE001
+        diag["attempts"].append({"probe": url, "error": repr(e)[:300]})
+
+
 def rows(block):
     return [dict(zip(block["columns"], r)) for r in block["data"]]
 
@@ -27,7 +45,7 @@ def from_iss(base):
         url = f"{base}.json?iss.meta=off&start={start}"
         status, ctype, body = get(url)
         if start == 0:
-            diag["attempts"].append({"url": url, "status": status, "type": ctype, "head": body[:1500]})
+            diag["attempts"].append({"url": url, "status": status, "type": ctype, "text": text_of(body)[:1500]})
         j = json.loads(body)
         key = next((k for k, v in j.items() if isinstance(v, dict) and "SECID" in v.get("columns", [])), None)
         if not key:
@@ -64,6 +82,13 @@ for base in ("https://iss.moex.com/iss/rms/engines/stock/objects/irr",
             break
     except Exception as e:  # noqa: BLE001
         diag["attempts"].append({"source": base, "error": repr(e)[:500]})
+
+if not result:
+    for u in ("https://www.nationalclearingcentre.ru/catalog/030802",
+              "https://www.nationalclearingcentre.ru/rates/securInfo",
+              "https://www.nationalclearingcentre.ru/rates/stockMarketRates",
+              "https://www.nationalclearingcentre.ru/rates/fondMarketRates"):
+        probe(u)
 
 if result:
     by = {}
