@@ -101,11 +101,19 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
     </div>
     <div class="row">
       <div class="field">
-        <label for="baseLev">Плечо пропа по ПС, ×</label>
-        <input id="baseLev" inputmode="decimal" value="6">
+        <label for="ddLimit">Лимит просадки (весь), ₽</label>
+        <input id="ddLimit" inputmode="decimal" value="139 742">
       </div>
       <div class="field">
-        <label for="irrK">Ставку НКЦ умножить на</label>
+        <label for="bpFull">ПС при пустом счёте, ₽</label>
+        <input id="bpFull" inputmode="decimal" value="25 000 000">
+      </div>
+      <div class="field">
+        <label for="myRate">Ставка пропа по тикеру, %</label>
+        <input id="myRate" inputmode="decimal" placeholder="пусто = по НКЦ">
+      </div>
+      <div class="field">
+        <label for="irrK">Поправка к оценке НКЦ, ×</label>
         <input id="irrK" inputmode="decimal" value="1">
       </div>
       <div class="field">
@@ -122,8 +130,9 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 
   <p class="note">
     В поле ПС вводите «Доступно» из терминала.
-    Акции: плечо по бумаге = min(плечо пропа, 1 ÷ (ставка риска НКЦ × множитель)); 1 ₽ позиции съедает «плечо пропа ÷ плечо по бумаге» ₽ ПС;
-    лоты = ПС × (1 − резерв) ÷ (цена × размер лота × этот коэффициент). Фьючерсы: контракты = ПС × (1 − резерв) ÷ ГО;
+    Акции: базовая ставка = лимит просадки ÷ ПС при пустом счёте. Позиция резервирует из просадки «стоимость × ставка бумаги»,
+    поэтому 1 ₽ позиции съедает «ставка бумаги ÷ базовая ставка» ₽ ПС; лоты = ПС × (1 − резерв) ÷ (стоимость лота × этот коэффициент).
+    Ставка бумаги: своя из терминала, иначе НКЦ × множитель. Фьючерсы: контракты = ПС × (1 − резерв) ÷ ГО;
     ГО берётся биржевое (INITIALMARGIN), а если брокер ставит выше — укажите множитель, например 1.2.
     Для фьючерса можно ввести код базового актива (Si, BR, SBRF, GOLD) — подставится ближайший контракт.
   </p>
@@ -149,7 +158,9 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   async function getJSON(url){
     const r = await fetch(url, {cache:"no-store"});
     if(!r.ok) throw new Error("ISS ответил "+r.status);
-    return r.json();
+    const txt = await r.text();
+    try{ return JSON.parse(txt); }
+    catch(e){ throw new Error("ISS вернул не данные, а: «"+txt.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,120)+"…»"); }
   }
 
   // restore inputs
@@ -157,8 +168,13 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   $("#reserve").value = store.get("reserve", "0");
   $("#goMult").value = store.get("goMult", "1");
   $("#side").value = store.get("side", "last");
-  $("#baseLev").value = store.get("baseLev", "6");
+  $("#ddLimit").value = store.get("ddLimit", $("#ddLimit").value);
+  $("#bpFull").value = store.get("bpFull", $("#bpFull").value);
   $("#irrK").value = store.get("irrK", "1");
+  const myRates = () => store.get("rates", {});
+  const fillMyRate = () => { $("#myRate").value = myRates()[$("#ticker").value.trim().toUpperCase()] || ""; };
+  fillMyRate();
+  $("#ticker").addEventListener("change", fillMyRate);
   $("#useIrr").value = store.get("useIrr", "1");
 
   // --- Ставки риска НКЦ (ISS rms) ---
@@ -214,7 +230,7 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
     const h = store.get("hist", []);
     const box = $("#history"); box.innerHTML = "";
     h.forEach(t => { const b = document.createElement("button"); b.className="ghost"; b.textContent=t;
-      b.addEventListener("click",()=>{ $("#ticker").value=t; run(); }); box.appendChild(b); });
+      b.addEventListener("click",()=>{ $("#ticker").value=t; fillMyRate(); run(); }); box.appendChild(b); });
   }
   function pushHistory(t){
     let h = store.get("hist", []).filter(x=>x!==t); h.unshift(t); store.set("hist", h.slice(0,10)); renderHistory();
@@ -245,6 +261,9 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
         const rs = I.map[s.SECID.toUpperCase()] || [];
         const row = rs.find(r=>!r.BOARDID || r.BOARDID===s.BOARDID) || rs[0];
         risk = row ? {row, ...(pickRate(row)||{})} : {missing:true};
+        // опорная ставка: SBER — на него проп даёт базовую ставку
+        const ref = (I.map["SBER"]||[]).find(r=>!r.BOARDID||r.BOARDID==="TQBR") || (I.map["SBER"]||[])[0];
+        if(risk && ref){ const pr = pickRate(ref); if(pr) risk.ref = pr.rate; }
       }catch(e){ irrErr = e.message; }
     }
     return {type:"stock", sec:s, md:m, risk};
@@ -276,7 +295,9 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
     if(!t) return;
     const bp = num($("#bp").value), reserve = num($("#reserve").value)||0, goMult = num($("#goMult").value)||1, side=$("#side").value;
     store.set("bp",$("#bp").value); store.set("reserve",$("#reserve").value); store.set("goMult",$("#goMult").value); store.set("side",side); store.set("last",t);
-    store.set("baseLev",$("#baseLev").value); store.set("irrK",$("#irrK").value); store.set("useIrr",$("#useIrr").value);
+    store.set("ddLimit",$("#ddLimit").value); store.set("bpFull",$("#bpFull").value); store.set("irrK",$("#irrK").value); store.set("useIrr",$("#useIrr").value);
+    { const m = myRates(), T = t.toUpperCase(), v = $("#myRate").value.trim();
+      if(v) m[T] = v; else delete m[T]; store.set("rates", m); }
     const out = $("#out");
     if(!(bp>0)){ out.innerHTML = `<div class="msg err">Укажите покупательскую способность больше нуля.</div>`; return; }
     out.style.opacity = .5;
@@ -301,23 +322,29 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
     const s=r.sec, m=r.md, lot=+s.LOTSIZE||1;
     const {p, src} = pickPrice(m, side, s.PREVPRICE);
     const lotCost = p*lot;
-    const baseLev = num($("#baseLev").value) > 0 ? num($("#baseLev").value) : 1;
+    // Модель пропа: позиция съедает из лимита просадки «стоимость × ставка бумаги».
+    // ПС в терминале = остаток просадки ÷ базовая ставка, где базовая = лимит ÷ ПС при пустом счёте.
+    const dd = num($("#ddLimit").value), full = num($("#bpFull").value);
+    const r0 = (dd>0 && full>0) ? dd/full : NaN;
     const k = num($("#irrK").value) > 0 ? num($("#irrK").value) : 1;
+    const manual = num($("#myRate").value);
     const R = r.risk;
-    let effLev = baseLev, riskNote = "не учитывается", riskRow = "", warn = "";
-    if(R && R.rate>0){
-      const rr = Math.min(1, R.rate*k);
-      effLev = Math.min(baseLev, 1/rr);
-      riskNote = `${fmt(rr*100,2)}%${k!==1?` (НКЦ ${fmt(R.rate*100,2)}% × ${fmt(k,2)})`:""}`;
+    let rate = r0, riskNote = "базовая (нет данных по бумаге)", riskRow = "", warn = "";
+    if(manual>0){
+      rate = manual/100; riskNote = "своя ставка (из терминала)";
+    } else if(R && R.rate>0){
+      const rel = R.ref>0 ? R.rate/R.ref : 1;
+      rate = Math.min(1, r0*Math.max(1, rel)*k);
+      riskNote = `оценка: НКЦ ${fmt(R.rate*100,2)}% ÷ SBER ${fmt((R.ref||NaN)*100,2)}%${k!==1?` × ${fmt(k,3)}`:""}`;
       const opts = R.fields.map(([c,v])=>`<option value="${esc(c)}"${c===R.col?" selected":""}>${esc(c)} = ${fmt(v,4)}</option>`).join("");
       riskRow = `<tr><td>Поле ставки в ISS</td><td><select id="irrCol" style="max-width:240px;font-size:13px;padding:4px 6px">${opts}</select></td></tr>`;
     } else if(R && R.missing){
-      effLev = 1; riskNote = "нет в списке НКЦ";
-      warn = `<div class="msg">Бумаги нет в ставках риска НКЦ — обычно это значит, что плеча на неё нет. Считаю с плечом ×1.</div>`;
-    } else if($("#useIrr").value==="1"){
-      warn = `<div class="msg err">Не удалось загрузить ставки риска НКЦ${irrErr?": "+esc(irrErr):""}. Считаю с полным плечом пропа — результат может быть завышен.</div>`;
+      warn = `<div class="msg">Бумаги нет в ставках риска НКЦ. Введите ставку пропа по ней вручную, иначе расчёт идёт по базовой ставке и может быть завышен.</div>`;
+    } else {
+      warn = `<div class="msg err">Ставки риска НКЦ не загрузились${irrErr?" ("+esc(irrErr)+")":""}. Считаю по базовой ставке пропа — для неликвидных бумаг результат будет завышен. Введите «Ставку пропа по тикеру», если знаете её.</div>`;
     }
-    const mult = baseLev/effLev;                 // сколько ₽ ПС съедает 1 ₽ позиции
+    if(!(rate>0)) rate = r0;
+    const mult = (rate>0 && r0>0) ? Math.max(1, rate/r0) : 1;   // сколько ₽ ПС съедает 1 ₽ позиции
     const lotBp = lotCost*mult;
     const lots = Math.floor(budget/lotBp);
     const used = lots*lotBp;
@@ -325,16 +352,17 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
       <div class="result">
         <div class="meta"><span class="pill stk">Акция</span><span>${esc(s.SECID)} · ${esc(s.SHORTNAME||"")}</span><span>${esc(s.BOARDID)}</span></div>
         <div class="big">${fmt(lots,0)}<small>лот${plural(lots)} = ${fmt(lots*lot,0)} шт.</small></div>
-        <div class="meta"><span>на сумму ${rub(lots*lotCost)}</span><span>плечо по бумаге ×${fmt(effLev,2)}</span></div>
+        <div class="meta"><span>на сумму ${rub(lots*lotCost)}</span><span>1 ₽ позиции = ${fmt(mult,2)} ₽ ПС</span></div>
       </div>
       ${warn}
       <table>
         <tr><td>Цена (${src})</td><td>${fmt(p,6)} ₽</td></tr>
         <tr><td>Размер лота</td><td>${fmt(lot,0)} шт.</td></tr>
         <tr><td>Стоимость 1 лота</td><td>${rub(lotCost)}</td></tr>
-        <tr><td>Ставка риска (покупка)</td><td>${riskNote}</td></tr>
+        <tr><td>Ставка пропа по бумаге</td><td>${fmt(rate*100,3)}% · ${riskNote}</td></tr>
         ${riskRow}
-        <tr><td>Плечо по бумаге / плечо пропа</td><td>×${fmt(effLev,2)} / ×${fmt(baseLev,2)}</td></tr>
+        <tr><td>Базовая ставка пропа</td><td>${fmt(r0*100,3)}%</td></tr>
+        <tr><td>Резерв просадки на 1 лот</td><td>${rub(lotCost*rate)}</td></tr>
         <tr><td>1 ₽ позиции съедает ПС</td><td>${fmt(mult,3)} ₽</td></tr>
         <tr><td>1 лот съедает ПС</td><td>${rub(lotBp)}</td></tr>
         <tr><td>Будет задействовано ПС</td><td>${rub(used)}</td></tr>
@@ -377,7 +405,7 @@ td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
   $("#go").addEventListener("click", run);
-  ["#ticker","#bp","#reserve","#goMult","#baseLev","#irrK"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter") run(); }));
+  ["#ticker","#bp","#reserve","#goMult","#ddLimit","#bpFull","#myRate","#irrK"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter") run(); }));
   $("#side").addEventListener("change", run);
   $("#useIrr").addEventListener("change", run);
   run();
