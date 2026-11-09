@@ -1,5 +1,5 @@
 {
- "run": "2026-11-09T17:32:53.986967Z",
+ "run": "2026-11-09T17:35:00.645796Z",
  "attempts": [
   {
    "url": "https://iss.moex.com/iss/rms/engines/stock/objects/marketrates.json?iss.meta=off&iss.only=marketrates,marketrates.cursor&start=0",
