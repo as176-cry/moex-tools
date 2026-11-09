@@ -96,14 +96,19 @@ for base in ("https://iss.moex.com/iss/rms/engines/stock/objects/marketrates",):
 
 
 if result:
+    # Компактный формат: SECID -> {d: дата, l: [[от, до, ставка падения %], ...], h: [...ставка роста]}
+    # Диапазоны — концентрационные лимиты НКЦ (в штуках): ставка растёт с размером позиции.
     by = {}
-    for r in result["rows"]:
-        sid = str(r.get("SECID") or r.get("assetid1") or r.get("ASSETID1") or "").upper()
-        by.setdefault(sid, []).append(r)
+    for r in sorted(result["rows"], key=lambda x: (x.get("assetid1") or "", x.get("range") or 0)):
+        sid = str(r.get("assetid1") or "").upper()
+        if not sid or r.get("discount_l") is None:
+            continue
+        e = by.setdefault(sid, {"d": r.get("tradedate"), "l": [], "h": []})
+        e["l"].append([r.get("range_start") or 0, r.get("range_end") or 0, r.get("discount_l")])
+        e["h"].append([r.get("range_start") or 0, r.get("range_end") or 0, r.get("discount_h")])
     payload = {
         "updated": diag["run"],
-        "source": result["source"],
-        "columns": result["columns"],
+        "source": result["source"] + " (ставки риска НКЦ, %)",
         "securities": by,
     }
     (OUT / "rates.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
