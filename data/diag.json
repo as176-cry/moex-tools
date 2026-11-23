@@ -1,5 +1,5 @@
 {
- "run": "2026-11-20T17:29:51.202583Z",
+ "run": "2026-11-23T17:30:01.422044Z",
  "attempts": [
   {
    "url": "https://iss.moex.com/iss/rms/engines/stock/objects/marketrates.json?iss.meta=off&iss.only=marketrates,marketrates.cursor&start=0",
@@ -9,7 +9,7 @@
   },
   {
    "source": "https://iss.moex.com/iss/rms/engines/stock/objects/marketrates",
-   "rows": 15672,
+   "rows": 15678,
    "columns": [
     "tradedate",
     "assetid1",
